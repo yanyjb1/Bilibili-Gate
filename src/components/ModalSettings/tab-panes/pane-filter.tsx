@@ -7,8 +7,9 @@ import { CheckboxSettingItem, SwitchSettingItem } from '$components/ModalSetting
 import { TabIcon } from '$components/RecHeader/tab-config'
 import { ETab } from '$enums'
 import { antMessage } from '$modules/antd'
-import { getUserNickname } from '$modules/bilibili/user/nickname'
 import { exportFilterSettings, importFilterSettings } from '$modules/filter/import-export'
+import { seenBvidStore } from '$modules/filter/dedup'
+import { getUserNickname } from '$modules/bilibili/user/nickname'
 import { parseUpRepresent } from '$modules/filter/parse'
 import { IconForDelete, IconForInfo } from '$modules/icon'
 import { settings, useSettingsSnapshot } from '$modules/settings'
@@ -277,6 +278,25 @@ function SubTabFilterForRec() {
 
         <div className={clsx(C.blockContainer, 'col-span-full')}>
           <div className={clsx(sharedClassNames.settingsGroupSubTitle)}>
+            <span>去重</span>
+            <HelpInfo>
+              过滤掉「曾经推荐过」的视频: <br />
+              在推荐类 Tab(推荐/热门/排行榜)出现的视频会被记住, <br />
+              之后再推荐直接不显示. 记录有上限, 超出丢弃最旧的 <br />
+              注意: 点开过的视频建议配合历史记录功能一起看
+            </HelpInfo>
+            <SwitchSettingItem configPath='filter.dedup.enabled' disabled={!enabled} className='ml-10px' />
+            <div className='flex-1' />
+            <Button onClick={clear_seen_bvids}>
+              <IconForDelete />
+              清空记录 ({seenBvidStore.size})
+            </Button>
+          </div>
+        </div>
+
+
+        <div className={clsx(C.blockContainer, 'col-span-full')}>
+          <div className={clsx(sharedClassNames.settingsGroupSubTitle)}>
             <span>标题</span>
             <HelpInfo>
               根据标题关键词过滤视频 <br />
@@ -369,4 +389,9 @@ async function clear_filterByAuthor_uselessRemarkData() {
 
   settings.filter.byAuthor.keywords = newList
   return antMessage.success('已清理「无效备注」数据!')
+}
+
+async function clear_seen_bvids() {
+  await seenBvidStore.clear()
+  return antMessage.success('已清空「已推荐」记录!')
 }

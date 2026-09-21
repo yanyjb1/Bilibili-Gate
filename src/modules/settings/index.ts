@@ -250,6 +250,11 @@ export const initialSettings = {
       keywords: [] as string[],
     },
 
+    // 去重: 过滤掉「曾经推荐过」的视频 (持久化记录 bvid)
+    dedup: {
+      enabled: false,
+      maxEntries: 5000, // 最多记录多少个, 超出丢弃最旧的
+    },
     // dynamic-feed
     dfByTitle: {
       enabled: false,

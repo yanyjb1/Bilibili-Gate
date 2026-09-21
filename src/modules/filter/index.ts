@@ -3,9 +3,10 @@ import { baseDebug } from '$common'
 import { checkIsDynamicFeed, type RecItemTypeOrSeparator } from '$define'
 import { EApiType, type ETab } from '$enums'
 import { blacklistMidSet } from '$modules/bilibili/me/relations/blacklist'
-import { DynamicFeedEnums, DynamicFeedItemHelper } from '$modules/rec-services/dynamic-feed/api/enums'
 import { isNormalRankItem } from '$modules/rec-services/hot/rank/rank-tab'
+import { DynamicFeedEnums, DynamicFeedItemHelper } from '$modules/rec-services/dynamic-feed/api/enums'
 import { getSettingsSnapshot, settings } from '$modules/settings'
+import { seenBvidStore } from './dedup'
 import { normalizeCardData } from './normalize'
 import { parseFilterByAuthor, parseFilterByTitle } from './parse'
 
@@ -28,13 +29,14 @@ export function isApiRecLike(api: EApiType) {
 }
 
 export function filterRecItems(items: RecItemTypeOrSeparator[], tab: ETab) {
-  // quick skip when (filter not enabled && blacklistMids empty)
-  if (!settings.filter.enabled && !blacklistMidSet.size) {
+  const dedupEnabled = settings.filter.dedup.enabled
+  // quick skip when (filter not enabled && blacklistMids empty && dedup not enabled)
+  if (!settings.filter.enabled && !blacklistMidSet.size && !dedupEnabled) {
     return items
   }
 
   const filter = getSettingsSnapshot().filter
-  const { minDuration, minPlayCount, minDanmakuCount, byAuthor, byTitle, dfByTitle, dfHideOpusMids } = filter
+  const { minDuration, minPlayCount, minDanmakuCount, byAuthor, byTitle, dfByTitle, dfHideOpusMids, dedup } = filter
   // general videos
   const { blockUpMids, blockUpNames } = parseFilterByAuthor(byAuthor.keywords)
   const { test: filterByTitleTest } = parseFilterByTitle(byTitle.keywords)
@@ -42,9 +44,14 @@ export function filterRecItems(items: RecItemTypeOrSeparator[], tab: ETab) {
   const { test: dfFilterByTitleTest } = parseFilterByTitle(dfByTitle.keywords)
   const { blockUpMids: dfBlockOpusMids } = parseFilterByAuthor(dfHideOpusMids.keywords)
 
-  return items.filter((item) => {
+  const passed: RecItemTypeOrSeparator[] = []
+  const passedBvids: string[] = []
+  items.forEach((item) => {
     // just keep it
-    if (item.api === EApiType.Separator) return true
+    if (item.api === EApiType.Separator) {
+      passed.push(item)
+      return
+    }
 
     const { play, duration, danmaku, recommendReason, goto, authorName, authorMid, title, bvid, href } =
       normalizeCardData(item)
@@ -54,6 +61,12 @@ export function filterRecItems(items: RecItemTypeOrSeparator[], tab: ETab) {
      * 已关注 Tab
      */
     if (tab === 'keep-follow-only' && !followed) return false
+
+    // dedup: 「曾经推荐过」的 bvid, 直接过滤
+    if (dedupEnabled && dedup.enabled && seenBvidStore.has(bvid)) {
+      debug('filter out by dedup-rule: %s %o', bvid, { title })
+      return false
+    }
 
     function check_blacklist_filterByUp_filterByTitle() {
       // blacklist
@@ -109,7 +122,7 @@ export function filterRecItems(items: RecItemTypeOrSeparator[], tab: ETab) {
 
     // 推荐 / 热门
     if (isApiRecLike(item.api) && check_blacklist_filterByUp_filterByTitle() === false) {
-      return false
+      return
     }
 
     // 推荐
@@ -117,9 +130,9 @@ export function filterRecItems(items: RecItemTypeOrSeparator[], tab: ETab) {
       const isVideo = goto === 'av'
       const isPicture = goto === 'picture'
       const isBangumi = goto === 'bangumi'
-      if (isVideo) return filterVideo()
-      if (isPicture) return filterPicture()
-      if (isBangumi) return filterBangumi()
+      if (isVideo && !filterVideo()) return
+      if (isPicture && !filterPicture()) return
+      if (isBangumi && !filterBangumi()) return
     }
     function filterVideo() {
       // 不过滤已关注视频
@@ -206,7 +219,7 @@ export function filterRecItems(items: RecItemTypeOrSeparator[], tab: ETab) {
             uniqId: item.uniqId,
             item,
           })
-          return false
+          return
         }
       }
 
@@ -220,10 +233,18 @@ export function filterRecItems(items: RecItemTypeOrSeparator[], tab: ETab) {
         dfBlockOpusMids.has(authorMid)
       ) {
         debug('filter out by df-hide-opus-mids-rule: %o', { dfHideOpusMids, authorMid, title, uniqId: item.uniqId })
-        return false
+        return
       }
     }
 
-    return true // just keep it
+    // dedup: 通过过滤的推荐类视频, 记入「已推荐」集合
+    if (dedupEnabled && dedup.enabled && bvid && isApiRecLike(item.api)) {
+      passedBvids.push(bvid)
+    }
+    passed.push(item)
   })
+
+  // 异步落盘, 不阻塞过滤热路径
+  if (passedBvids.length) void seenBvidStore.addMany(passedBvids)
+  return passed
 }

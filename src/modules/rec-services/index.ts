@@ -72,14 +72,15 @@ async function fetchMinCount(count: number, fetcherOptions: FetcherOptions, filt
       // 常规
       const pagesize = willUsePcApi(tab) ? PcRecService.PAGE_SIZE : AppRecService.PAGE_SIZE
       const hasFilter = (() => {
-        const { enabled, byAuthor, byTitle, minDuration, minPlayCount, minDanmakuCount } = settings.filter
+        const { enabled, byAuthor, byTitle, minDuration, minPlayCount, minDanmakuCount, dedup } = settings.filter
         return (
           enabled ||
           byAuthor.enabled ||
           byTitle.enabled ||
           minDuration.enabled ||
           minPlayCount.enabled ||
-          minDanmakuCount.enabled
+          minDanmakuCount.enabled ||
+          dedup.enabled
         )
       })()
 
