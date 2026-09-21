@@ -64,8 +64,12 @@ const fileName = `${packageName}${miniSuffix}.user.js`
 const metaFileName = `${packageName}${miniSuffix}.meta.js`
 const willExternalAntd = false //  !minify
 
-const branchBaseUrl = (branch: string) =>
-  `https://raw.githubusercontent.com/magicdawn/Bilibili-Gate/refs/heads/${branch}/`
+const branchBaseUrl = (branch: string) => {
+  // fork-friendly: use the repo the build runs in (GitHub Actions sets GITHUB_REPOSITORY),
+  // fallback to upstream for local builds
+  const repo = process.env.GITHUB_REPOSITORY || 'magicdawn/Bilibili-Gate'
+  return `https://raw.githubusercontent.com/${repo}/refs/heads/${branch}/`
+}
 
 let downloadURL: string | undefined
 let updateURL: string | undefined
